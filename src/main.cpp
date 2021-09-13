@@ -1,5 +1,7 @@
 #include "config.hpp"
 #include "function.hpp"
+#include "struct.hpp"
+
 #include <cstdio>
 #include <typeinfo>
 
@@ -15,6 +17,10 @@ int main(int argc, char* argv[]) {
     Kokkos::initialize(argc, argv);
     {
         //static constexpr int n = 100;
+        S s0;
+        S s1 = std::move(s0);
+        S s2(s0);
+        S s3(std::move(s2));
 
         ViewVectorD x("x", 5);
         ViewVectorD::HostMirror x_host = Kokkos::create_mirror_view(x);
@@ -28,8 +34,12 @@ int main(int argc, char* argv[]) {
         Kokkos::deep_copy(x, x_host);
 
         // make some nice stuff on device
+        for (size_t i = 0; i < x_host.extent(0); i++) {
+            do_something(i);
+            x_host(i) = i;
+        }
         ExecSpace ex;
-        my_function(ex,x,2);
+        my_function(ex,x,2); // here we use our custom kernel on the device
 
         // get the results back to the host for Io stuff etc.
         Kokkos::deep_copy(x_host,x);
@@ -38,8 +48,34 @@ int main(int argc, char* argv[]) {
             printf("value: %f\n",x_host[i]);
         }
 
-        printf("Hello World on Kokkos execution space %s\n",
-               typeid(ex).name());
+        ViewVectorDHost v_host("v", 3);
+        for (size_t i = 0; i < v_host.extent(0); i++) {
+            do_something(i);
+            v_host(i) = i;
+        }
+
+        ExecSpaceHost ex_host;
+        my_function(ex_host,v_host,3); // here we use our custom kernel on the host
+
+        for (size_t i = 0; i < v_host.extent(0); i++) {
+            printf("value: %f\n",v_host[i]);
+        }
+
+        ViewMatrix3D x_mat("x_mat",3);
+        ViewMatrix3D::HostMirror x_mat_host = Kokkos::create_mirror_view(x_mat);
+
+        for(size_t n = 0; n < x_mat.extent(0); n++) {
+            for (size_t m = 0; m < x_mat.extent(1) ; m++) {
+                x_mat_host(n,m) = (ViewMatrix3D::value_type) n*m;
+            }
+        }
+
+        Kokkos::deep_copy(x_mat,x_mat_host);
+        calculate(ex,x_mat);
+        Kokkos::deep_copy(x_mat_host,x_mat);
+
+        //printf("Hello World on Kokkos execution space %s\n",
+        //       typeid(ex).name());
 
         // Print the name of Kokkos' default execution space.  We're using
         // typeid here, so the name might get a bit mangled by the linker,
